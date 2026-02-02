@@ -1,0 +1,661 @@
+{
+  "name": "Timesheets — Weekly Cutoff Compliance Scan",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "332f8202-60ca-4fa3-8e29-a63bbc077961",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f3738647-c7e3-4a9d-b6e8-2f61c28b20be",
+              "name": "sheetId",
+              "value": "1rf402-jFdRFRifu4m40Br5sQ22mLDYKpXnYn9EEAyP8",
+              "type": "string"
+            },
+            {
+              "id": "d81c1de0-34c4-43d3-b4cd-07b403a09f40",
+              "name": "timesheetTab",
+              "value": "Timesheet_Entries",
+              "type": "string"
+            },
+            {
+              "id": "1a80961d-6964-4012-af87-c3db8b1ea41b",
+              "name": "ratesTab",
+              "value": "Rates",
+              "type": "string"
+            },
+            {
+              "id": "de9aad21-231b-49f0-b198-5179506c6117",
+              "name": "auditTab",
+              "value": "Audit_Log",
+              "type": "string"
+            },
+            {
+              "id": "95267158-8f00-4976-be80-3c80a3e34430",
+              "name": "slackChannel",
+              "value": "#timesheets-governance",
+              "type": "string"
+            },
+            {
+              "id": "15e81a54-28e0-4fff-94c7-6f6d16207eac",
+              "name": "hdrWeekStart",
+              "value": "Week Start Date",
+              "type": "string"
+            },
+            {
+              "id": "74d38ef5-1a17-4dd8-bbcb-d54a4b45e1eb",
+              "name": "hdrEmail",
+              "value": "Employee Email",
+              "type": "string"
+            },
+            {
+              "id": "318ea164-c3cb-4add-ac83-c5c4da3f3ff5",
+              "name": "hdrStatus",
+              "value": "Submission Status",
+              "type": "string"
+            },
+            {
+              "id": "86e179e5-5246-4721-88d6-9862da82f87b",
+              "name": "hdrSubmissionTs",
+              "value": "Submission Timestamp",
+              "type": "string"
+            },
+            {
+              "id": "9d6d9c48-33bc-4b13-be1c-d4cc5b69377b",
+              "name": "hdrRatesEmail",
+              "value": "Employee Email",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "2ce9d154-3eaf-4de5-9180-4c2ceb166e96",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.myNewField = 1;\n}\n// Uses the Schedule Trigger time (already SAST in your trigger output)\n// and computes the weekly period boundaries.\n\nconst now = new Date($json.timestamp ?? new Date().toISOString()); // prefer trigger timestamp\nconst day = now.getDay(); // 0=Sun..6=Sat\n\n// Monday 00:00 of current week (if Sunday, go back 6 days)\nconst diffToMonday = (day === 0) ? 6 : (day - 1);\n\nconst weekStart = new Date(now);\nweekStart.setDate(now.getDate() - diffToMonday);\nweekStart.setHours(0, 0, 0, 0);\n\n// Sunday 23:59:59.999 of same week\nconst cutoff = new Date(weekStart);\ncutoff.setDate(weekStart.getDate() + 6);\ncutoff.setHours(23, 59, 59, 999);\n\n// Period key = YYYY-MM-DD (Monday)\nconst pad = (n) => String(n).padStart(2, '0');\nconst periodKey = `${weekStart.getFullYear()}-${pad(weekStart.getMonth() + 1)}-${pad(weekStart.getDate())}`;\n\nreturn [{\n  ...$json,\n  weekStartISO: weekStart.toISOString(),\n  cutoffISO: cutoff.toISOString(),\n  periodKey\n}];\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "c9c210ff-aeed-4c0c-ad80-66f0f5091077",
+      "name": "Compute Week Window"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{$json.sheetId}}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{$json.ratesTab}}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        -192
+      ],
+      "id": "90095826-7ce6-4c07-aecd-7de3030b2ed7",
+      "name": "GS - Rates Rooster",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "KHbNmyjZfbEPwd7b",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $node[\"Config\"].json[\"sheetId\"] }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $node[\"Config\"].json[\"timesheetTab\"] }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        640,
+        0
+      ],
+      "id": "890ac6c6-b799-4e8e-ac96-33319dc1a782",
+      "name": "GS — Timesheet Entries",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "KHbNmyjZfbEPwd7b",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        816,
+        0
+      ],
+      "id": "61c07cef-c618-43dd-b09b-9a073b994aaf",
+      "name": "Merge — Roster + Entries"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": true
+        }
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        624,
+        192
+      ],
+      "id": "f6219694-017d-4a9b-a75e-9c99c423bea7",
+      "name": "Merge — Context + Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = items[0]?.json || {};\n\n// Config fields\nconst hdrWeekStart = ctx.hdrWeekStart;       // currently \"Week Start Date\"\nconst hdrEmail = ctx.hdrEmail;               // \"Employee Email\"\nconst hdrStatus = ctx.hdrStatus;             // \"Submission Status\"\nconst hdrSubmissionTs = ctx.hdrSubmissionTs; // \"Submission Timestamp\"\nconst hdrRatesEmail = ctx.hdrRatesEmail;     // \"Employee Email\"\n\nconst weekData = $(\"Compute Week Window\").first().json; \nconst periodKey = weekData.periodKey || \"\";\nconst cutoffISO = weekData.cutoffISO || new Date().toISOString();\nconst cutoffMs = new Date(cutoffISO).getTime();\n\nconst normEmail = (e) => String(e || '').trim().toLowerCase();\nconst normStatus = (s) => String(s || '').trim();\n\nconst parseSubmission = (s) => {\n  if (!s) return NaN;\n  const str = String(s).trim();\n  const ms = Date.parse(str);\n  if (!Number.isNaN(ms)) return ms;\n\n  // Fallback for \"MM/DD/YYYY HH:mm:ss\"\n  const m = str.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})\\s+(\\d{1,2}):(\\d{2}):(\\d{2})$/);\n  if (!m) return NaN;\n  const MM = Number(m[1]), DD = Number(m[2]), YYYY = Number(m[3]);\n  const hh = Number(m[4]), mm = Number(m[5]), ss = Number(m[6]);\n  return new Date(YYYY, MM - 1, DD, hh, mm, ss).getTime();\n};\n\n// Best-effort parse for \"15 - Dec - 2025\"\nconst parseWorkDate = (s) => {\n  if (!s) return NaN;\n  const str = String(s).trim();\n\n  const ms = Date.parse(str);\n  if (!Number.isNaN(ms)) return ms;\n\n  const m = str.match(/^(\\d{1,2})\\s*-\\s*([A-Za-z]{3})\\s*-\\s*(\\d{4})$/);\n  if (!m) return NaN;\n\n  const dd = Number(m[1]);\n  const mon = m[2].toLowerCase();\n  const yyyy = Number(m[3]);\n  const map = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};\n  if (map[mon] === undefined) return NaN;\n\n  return new Date(yyyy, map[mon], dd, 0, 0, 0).getTime();\n};\n\n// Compute Monday key YYYY-MM-DD from a date ms\nconst mondayKeyFromMs = (ms) => {\n  const d = new Date(ms);\n  // Monday-based weekday: 1..7 (Mon..Sun)\n  const weekday = ((d.getDay() + 6) % 7) + 1;\n  const monday = new Date(d);\n  monday.setDate(d.getDate() - (weekday - 1));\n  monday.setHours(0,0,0,0);\n\n  const pad = (n) => String(n).padStart(2, '0');\n  return `${monday.getFullYear()}-${pad(monday.getMonth()+1)}-${pad(monday.getDate())}`;\n};\n\nconst allRows = items.map(i => i.json);\n\n// Identify timesheet rows by strong markers you have\nconst isTimesheetRow = (row) =>\n  row && row[\"Work Description\"] !== undefined && row[hdrStatus] !== undefined;\n\n// Identify rates rows: anything that is NOT a timesheet row but has Employee Email\nconst isRatesRow = (row) =>\n  row && row[hdrRatesEmail] !== undefined && !isTimesheetRow(row);\n\n// Build roster\nconst roster = new Set();\nfor (const row of allRows) {\n  if (!isRatesRow(row)) continue;\n  const email = normEmail(row[hdrRatesEmail]);\n  if (email) roster.add(email);\n}\nconst rosterList = Array.from(roster);\n\n// Filter period rows\nconst periodRows = [];\nfor (const row of allRows) {\n  if (!isTimesheetRow(row)) continue;\n\n  const email = normEmail(row[hdrEmail]);\n  if (!email) continue;\n\n  let wk = String(row[hdrWeekStart] || '').trim();\n\n  // If wk is not a date key, try compute from Work Date\n  if (!wk.match(/^\\d{4}-\\d{2}-\\d{2}/)) {\n    const workMs = parseWorkDate(row[\"Work Date\"]);\n    if (!Number.isNaN(workMs)) wk = mondayKeyFromMs(workMs);\n  }\n\n  const matchesPeriod = (wk === periodKey) || wk.startsWith(periodKey);\n  if (!matchesPeriod) continue;\n\n  periodRows.push({\n    email,\n    status: normStatus(row[hdrStatus]),\n    submissionTs: row[hdrSubmissionTs] ? String(row[hdrSubmissionTs]).trim() : ''\n  });\n}\n\n// Determine submitted/approved and late\nconst submitted = new Set();\nconst lateSubmissions = [];\n\nfor (const r of periodRows) {\n  if (r.status !== \"Submitted\" && r.status !== \"Approved\") continue;\n  submitted.add(r.email);\n\n  const subMs = parseSubmission(r.submissionTs);\n  if (!Number.isNaN(subMs) && subMs > cutoffMs) {\n    lateSubmissions.push({ email: r.email, submissionTs: r.submissionTs });\n  }\n}\n\n// Missing submissions (if roster is available)\nconst missing = rosterList.length ? rosterList.filter(e => !submitted.has(e)) : [];\n\nconst runTs = new Date().toISOString();\nconst auditRows = [];\n\nfor (const email of missing) {\n  auditRows.push({\n    Timestamp: runTs,\n    Actor: \"SYSTEM:n8n\",\n    Event_Type: \"MISSING_SUBMISSION\",\n    Entity_ID: `${email}::${periodKey}`,\n    Notes: JSON.stringify({ periodKey, cutoffISO })\n  });\n}\n\nfor (const x of lateSubmissions) {\n  auditRows.push({\n    Timestamp: runTs,\n    Actor: \"SYSTEM:n8n\",\n    Event_Type: \"LATE_SUBMISSION\",\n    Entity_ID: `${x.email}::${periodKey}`,\n    Notes: JSON.stringify({ periodKey, cutoffISO, submissionTs: x.submissionTs })\n  });\n}\n\nconst missingCount = missing.length;\nconst lateCount = lateSubmissions.length;\n\nconst missingLines = missingCount ? missing.map(e => `• ${e}`).join('\\n') : '• None';\nconst lateLines = lateCount ? lateSubmissions.map(x => `• ${x.email} — ${x.submissionTs}`).join('\\n') : '• None';\n\nconst slackText =\n`*Weekly Cutoff Compliance Scan — Week ${periodKey}*\\n` +\n`Cutoff (SAST): ${cutoffISO}\\n\\n` +\n`*Missing submissions (${missingCount})*\\n${missingLines}\\n\\n` +\n`*Late submissions (${lateCount})*\\n${lateLines}`;\n\nreturn [{\n  ...ctx,\n  rosterCount: rosterList.length,\n  periodRowsCount: periodRows.length,\n  missingCount,\n  lateCount,\n  auditRows,\n  slackText\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "dad9ffc6-d9b0-41d8-9bb4-107fd09491eb",
+      "name": "Evaluate Expressions"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "82757bcb-4bed-481e-bb15-4eb4d24ec198",
+              "leftValue": "={{ Number($json.missingCount || 0) + Number($json.lateCount || 0) }}\n",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1232,
+        0
+      ],
+      "id": "d5be4fe1-90bd-4328-8cd3-a4a816d157d8",
+      "name": "Any Exceptions?"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0A4KCMSSGM",
+          "mode": "list",
+          "cachedResultName": "timesheets-governance"
+        },
+        "text": "={{ $json.slackText }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1520,
+        -16
+      ],
+      "id": "84619a2f-20f6-4212-bfeb-45c1ea0548eb",
+      "name": "Send a message",
+      "webhookId": "a37aeb30-28a5-44b7-b85e-451a665a0738",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "dKXbRnmAjoz8fEvz",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "auditRows",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        -128
+      ],
+      "id": "b2c542c9-0885-4626-a649-b9a681e5c272",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $node[\"Config\"].json[\"sheetId\"] }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $node[\"Config\"].json[\"auditTab\"] }}"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.Timestamp }}",
+            "Actor": "={{ $json.Actor }}",
+            "Event_Type": "={{ $json.Event_Type }}",
+            "Entity_ID": "={{ $json.Entity_ID }}",
+            "Notes": "={{ JSON.stringify($json.Notes) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Actor",
+              "displayName": "Actor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Event_Type",
+              "displayName": "Event_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Entity_ID",
+              "displayName": "Entity_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1728,
+        -128
+      ],
+      "id": "5fa7999b-a39b-42d5-b7d4-8691725cec53",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "KHbNmyjZfbEPwd7b",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "67421a1e-a460-4d85-a571-ecbca8acf538",
+              "leftValue": "={{ $json['Submission Status'] }}",
+              "rightValue": "Approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "9692b0d2-51b2-48ce-af3b-f94e55b85358",
+              "leftValue": "={{ $json[\"Hours Worked\"] }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        -176
+      ],
+      "id": "bb9a2c4e-b4cf-4f4f-8cf5-bc6f921492d0",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "32482e59-a0b3-4ef1-9c54-f5ab148ed99b",
+              "name": "lineItemTotal",
+              "value": "={{ (Number($json[\"Hours Worked\"]) || 0) * (Number($json[\"Hourly Rate\"]) || 0) }}",
+              "type": "number"
+            },
+            {
+              "id": "3d44f334-73ea-41da-9b34-2e255d9cd648",
+              "name": "debug_hours",
+              "value": "={{ $json[\"Hours Worked\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "45c32ffd-c724-4a2c-884b-b94eb82845fe",
+              "name": "debug_rate",
+              "value": "={{ $('GS - Rates Rooster').item.json['Hourly Rate'] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1104,
+        -176
+      ],
+      "id": "75884e6f-bdfc-41b0-830a-e79c3dfcc68d",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        -176
+      ],
+      "id": "6e85bbac-8798-4075-b34b-bc468da7847a",
+      "name": "Aggregate"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Compute Week Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Week Window": {
+      "main": [
+        [
+          {
+            "node": "GS - Rates Rooster",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GS — Timesheet Entries",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge — Context + Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GS - Rates Rooster": {
+      "main": [
+        [
+          {
+            "node": "Merge — Roster + Entries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GS — Timesheet Entries": {
+      "main": [
+        [
+          {
+            "node": "Merge — Roster + Entries",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge — Roster + Entries": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Expressions",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge — Context + Data",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge — Context + Data": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Expressions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Expressions": {
+      "main": [
+        [
+          {
+            "node": "Any Exceptions?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Exceptions?": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "17d27552-c1bf-40dd-b71c-9fa5217cc513",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "36177d9f39e3fbadc619b09e17534862ace538a3346430144aa13259526ba5c0"
+  },
+  "id": "z1NqlJQCywxduiiw",
+  "tags": []
+}
