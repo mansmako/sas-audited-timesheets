@@ -1,11 +1,20 @@
-### Input Layer (Google Sheets)
+# Architecture – SAS Audited Timesheets
 
-The Input Layer is the **source of truth** for all timesheet data. It consists of protected admin sheets for hourly rates and open contributor sheets for time entries. Each row records who worked, when they worked, what they did, and the workflow status (Draft → Submitted → Approved).
+## Input Layer – Google Sheets
 
-### Logic Layer (n8n)
+- Timesheet_Entries: employees log work (dates, hours, description, status).
+- Rates: HR/management define hourly rates per employee.
+- Audit_Log: system/appends audit events (late submissions, post-cutoff edits, etc.).
 
-The Logic Layer is the **automation brain** that cleans, enriches, and audits the raw spreadsheet data. It normalises emails and dates, merges entries with rates, calculates line‑item totals, evaluates cutoff rules, and generates structured audit events. It also prepares payroll‑ready CSV outputs based only on approved entries.
+## Logic Layer – n8n
 
-### Visibility Layer (Slack)
+- Normalises emails and dates for reliable joins.
+- Merges Timesheet_Entries with Rates to calculate line-item totals.
+- Applies cutoff logic to classify on-time vs late.
+- Outputs payroll-ready CSVs and audit events.
 
-The Visibility Layer is the **communication surface** for the whole system. It publishes weekly summaries and exception alerts (late submissions, post‑cutoff edits, missing entries) into shared Slack channels. This makes the audit trail and operational status visible to managers and operations without them needing to open the spreadsheets or automation tool.
+## Visibility Layer – Slack
+
+- Operational alerts and summaries go to #proj-sas-timesheets-ops.
+- Technical failures and issues go to #proj-sas-timesheets-dev.
+- Future: announcements in #announce-sas-timesheets.
