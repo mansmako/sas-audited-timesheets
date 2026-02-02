@@ -4,6 +4,6 @@ Audited Timesheet → Payroll Automation for knowledge-work teams (Sheets + n8n 
 
 ## Triangle of Truth
 
-- Google Sheets: Rates + Entries
-- n8n: Normalisation, Audit Engine, Multiplex Merge
-- Slack: Exceptions, alerts, and weekly summaries
+- Input Layer – Google Sheets (Rates + Entries)
+- Logic Layer – n8n (normalisation, audit engine, multiplex merge)
+- Visibility Layer – Slack (exceptions, alerts, weekly summaries)
